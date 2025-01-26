@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { CopyToClipboard } from "react-copy-to-clipboard";
 import Copy from "../public/icons/copy.svg";
 import Undo from "../public/icons/undo.svg";
@@ -15,11 +15,14 @@ export default function Main() {
   const [suggestions, setSuggestions] = useState({});
   const [answer, setAnswer] = useState([]);
   const [hoveredWord, setHoveredWord] = useState(null);
+  const contentEditableRef = useRef(null);
+  
 
   function handleTextChange(e) {
     const newText = e.target.innerText;
-    setText(newText);
 
+    setText(newText);
+    // console.log(newText);
     const words = newText
       .split(" ")
       .filter((word) => word.trim().length > 0).length;
@@ -42,11 +45,11 @@ export default function Main() {
     }, 2000);
   }
 
-  async function handleSpellCheck(e) {
+  async function handleSubmit(e) {
     try {
       setLoading(true);
       setPreviousText(text);
-
+  
       const res = await fetch(
         "https://nlp-fastapi-backend.onrender.com/next_word",
         {
@@ -57,40 +60,34 @@ export default function Main() {
           },
         }
       );
-
-      const data = await res.json();
-
-      const next_word = data["next_word"];
-
-      console.log(data, next_word);
-      setSuggestions([next_word]);
-      let answerData = text.split(" ");
-
-      if (next_word != null) {
-        answerData.push(next_word);
+      
+      if (!res.ok) {
+        if (res.status >= 400) {
+          alert(`Error ${res.status}: ${res.statusText}`);
+        } else {
+          alert("An error occurred: " + res.statusText);
+        }
+        setLoading(false);
+        return;
       }
-      setAnswer(answerData);
-      setText(answerData.join(" "));
+  
+      const data = await res.json();
+      
+      const next_word = data["next_word"];
+      // console.log(next_word)
+      if (next_word) {
+        const new_text = text + " " + next_word;
+        setText(new_text);
+        contentEditableRef.current.innerText = new_text;
+        setFixed(true);
+      } 
+    } catch (error) {
+      alert("An error occurred: " + error.message);
+    } finally {
       setLoading(false);
-      setFixed(true);
-    } catch (err) {
-      console.log(err);
-      setLoading(false);
-      setFixed(true);
     }
   }
-
-  function handleSuggestionClick(originalWord, newWord) {
-    // Update the corrected word in the answer array
-    const updatedAnswer = answer.map((ele) =>
-      ele === originalWord ? newWord : ele
-    );
-    setAnswer(updatedAnswer);
-
-    // Update the global text variable
-    const updatedText = updatedAnswer.join(" ");
-    setText(updatedText);
-  }
+  
 
   return (
     <div className="w-screen h-screen flex justify-center items-center flex-col px-2 sm:px-40 py-16 sm:py-28">
@@ -101,7 +98,7 @@ export default function Main() {
             className="px-4 resize-none w-full h-full bg-white dark:bg-neutral-800 border-none focus:ring-0 placeholder-neutral-400 overflow-scroll"
             placeholder="Enter your text"
             onInput={handleTextChange}
-            dangerouslySetInnerHTML={{ __html: fixed ? answer.join(" ") : "" }}
+            ref={contentEditableRef}
           ></div>
           <div className="grid grid-cols-3 justify-between w-full ">
             <div className="flex gap-4 place-self-start self-center">
@@ -123,7 +120,7 @@ export default function Main() {
               <button
                 type="button"
                 disabled={!text}
-                onClick={handleSpellCheck}
+                onClick={handleSubmit}
                 className={`${
                   words !== 0
                     ? "bg-teal-600 dark:bg-teal-800 hover:bg-teal-700 dark:hover:bg-teal-900"
